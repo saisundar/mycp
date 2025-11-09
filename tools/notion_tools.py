@@ -1,35 +1,67 @@
 """
 Notion MCP Tools - CRUD operations for Notion workspaces
-Simplified for FastMCP Cloud deployment
+Optimized for FastMCP Cloud deployment with completely lazy loading
 """
 
 import json
-import os
 import sys
+import os
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from notion_client import Client
 
-# Load environment variables
-load_dotenv()
+# Lazy loading state - don't load anything at import time
+_notion_token = None
+_notion_client = None
+_env_loaded = False
+_DEFAULT_DATABASE_ID = None
 
-# Initialize Notion client (will be None if token not set)
-notion_token = os.getenv("NOTION_TOKEN")
-notion = Client(auth=notion_token) if notion_token else None
-DEFAULT_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
+
+def _load_env():
+    """Load environment variables on first access."""
+    global _notion_token, _DEFAULT_DATABASE_ID, _env_loaded
+    if not _env_loaded:
+        load_dotenv()
+        _notion_token = os.getenv("NOTION_TOKEN")
+        _DEFAULT_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
+        _env_loaded = True
+
+
+def _get_notion_client() -> Client:
+    """
+    Get or create Notion client lazily.
+    Only initializes when first tool is called.
+    """
+    global _notion_client
+    if _notion_client is None:
+        _load_env()
+        if not _notion_token:
+            raise ValueError(
+                "NOTION_TOKEN environment variable is not set. Get one from https://www.notion.so/my-integrations"
+            )
+        _notion_client = Client(auth=_notion_token)
+    return _notion_client
 
 
 def _check_config() -> tuple[bool, str]:
-    """Check if Notion is properly configured and return status + message."""
-    if not notion_token:
+    """
+    Check if Notion is properly configured and return status + message.
+    This now also verifies the client can be initialized.
+    """
+    _load_env()
+
+    if not _notion_token:
         return (
             False,
             "NOTION_TOKEN environment variable is not set. Get one from https://www.notion.so/my-integrations",
         )
 
-    if not notion:
-        return False, "Failed to initialize Notion client. Check your NOTION_TOKEN."
+    # Try to get client to verify it's valid
+    try:
+        _get_notion_client()
+    except Exception as e:
+        return False, f"Failed to initialize Notion client: {e}"
 
     return True, ""
 
@@ -47,12 +79,15 @@ def create_database_page(
     if not is_configured:
         return {"success": False, "error": error_msg}
 
-    db_id = database_id or DEFAULT_DATABASE_ID
+    db_id = database_id or _DEFAULT_DATABASE_ID
     if not db_id:
         return {
             "success": False,
             "error": "No database_id provided and NOTION_DATABASE_ID environment variable is not set",
         }
+
+    # Get client lazily
+    notion = _get_notion_client()
 
     # Prepare the page properties
     page_properties = {"title": {"title": [{"text": {"content": title}}]}}
@@ -96,12 +131,15 @@ def get_database(
     if not is_configured:
         return {"success": False, "error": error_msg}
 
-    db_id = database_id or DEFAULT_DATABASE_ID
+    db_id = database_id or _DEFAULT_DATABASE_ID
     if not db_id:
         return {
             "success": False,
             "error": "No database_id provided and NOTION_DATABASE_ID environment variable is not set",
         }
+
+    # Get client lazily
+    notion = _get_notion_client()
 
     query_params = {}
 
@@ -148,6 +186,9 @@ def get_page(page_id: str) -> Dict[str, Any]:
     if not is_configured:
         return {"success": False, "error": error_msg}
 
+    # Get client lazily
+    notion = _get_notion_client()
+
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
         page_id = page_id.split("/")[-1].split("?")[0]
@@ -181,6 +222,9 @@ def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
     is_configured, error_msg = _check_config()
     if not is_configured:
         return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    notion = _get_notion_client()
 
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
@@ -218,6 +262,9 @@ def create_page(
     is_configured, error_msg = _check_config()
     if not is_configured:
         return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    notion = _get_notion_client()
 
     # Prepare the page
     page_data = {"properties": {"title": {"title": [{"text": {"content": title}}]}}}
@@ -262,6 +309,9 @@ def archive_page(page_id: str) -> Dict[str, Any]:
     is_configured, error_msg = _check_config()
     if not is_configured:
         return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    notion = _get_notion_client()
 
     # Extract page ID from URL if needed
     if "notion.so" in page_id:

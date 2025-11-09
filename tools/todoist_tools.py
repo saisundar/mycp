@@ -1,38 +1,63 @@
 """
 Todoist MCP Tools - Task management operations for Todoist
+Optimized for FastMCP Cloud deployment with completely lazy loading
 """
 
 import os
-import sys
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 from todoist_api_python.api import TodoistAPI
 
-# Load environment variables
-load_dotenv()
+# Lazy loading state - don't load anything at import time
+_todoist_token = None
+_api_client = None
+_env_loaded = False
 
-# Initialize Todoist configuration (without raising errors at import time)
-todoist_token = os.getenv("TODOIST_TOKEN")
-api = None
-if todoist_token:
-    try:
-        api = TodoistAPI(todoist_token)
-    except Exception:
-        api = None
+
+def _load_env():
+    """Load environment variables on first access."""
+    global _todoist_token, _env_loaded
+    if not _env_loaded:
+        load_dotenv()
+        _todoist_token = os.getenv("TODOIST_TOKEN")
+        _env_loaded = True
+
+
+def _get_api_client() -> TodoistAPI:
+    """
+    Get or create Todoist API client lazily.
+    Only initializes when first tool is called.
+    """
+    global _api_client
+    if _api_client is None:
+        _load_env()
+        if not _todoist_token:
+            raise ValueError(
+                "TODOIST_TOKEN environment variable is not set. Get one from https://todoist.com/app/settings/integrations"
+            )
+        _api_client = TodoistAPI(_todoist_token)
+    return _api_client
 
 
 def _check_config() -> tuple[bool, str]:
-    """Check if Todoist is properly configured and return status + message."""
-    if not todoist_token:
+    """
+    Check if Todoist is properly configured and return status + message.
+    This now also verifies the client can be initialized.
+    """
+    _load_env()
+
+    if not _todoist_token:
         return (
             False,
             "TODOIST_TOKEN environment variable is not set. Get one from https://todoist.com/app/settings/integrations",
         )
 
-    if not api:
-        return False, "Failed to initialize Todoist client. Check your TODOIST_TOKEN."
+    # Try to get client to verify it's valid
+    try:
+        _get_api_client()
+    except Exception as e:
+        return False, f"Failed to initialize Todoist client: {e}"
 
     return True, ""
 
@@ -54,32 +79,14 @@ def create_task(
 ) -> Dict[str, Any]:
     """
     Create a new task in Todoist.
-
-    Args:
-        content: Task content (required)
-        description: Task description
-        project_id: Project ID (use get_projects to find available projects)
-        section_id: Section ID
-        parent_id: Parent task ID (for sub-tasks)
-        order: Task order
-        labels: List of label names
-        priority: Task priority (1-4, where 4 is highest)
-        due_string: Human-readable due date (e.g., "tomorrow at 12:00", "every day")
-        due_date: Specific due date in YYYY-MM-DD format
-        due_datetime: Specific due datetime in RFC3339 format
-        due_lang: Language for due_string (e.g., "en", "es")
-        assignee_id: Assignee ID (for shared projects)
-
-    Returns:
-        Created task object
     """
-    # Check configuration first
+    # Check configuration at runtime
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         task = api.add_task(
@@ -131,25 +138,13 @@ def get_tasks(
 ) -> Dict[str, Any]:
     """
     Get tasks from Todoist.
-
-    Args:
-        project_id: Filter by project ID
-        section_id: Filter by section ID
-        label: Filter by label
-        filter_query: Filter using Todoist's natural language (e.g., "today", "p1", "@home")
-        lang: Language for filter_query
-        ids: Specific task IDs to retrieve
-
-    Returns:
-        List of tasks
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         tasks = api.get_tasks(
@@ -196,20 +191,13 @@ def get_tasks(
 def complete_task(task_id: str) -> Dict[str, Any]:
     """
     Mark a task as completed.
-
-    Args:
-        task_id: The ID of the task to complete
-
-    Returns:
-        Success status
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         is_success = api.close_task(task_id=task_id)
@@ -237,29 +225,13 @@ def update_task(
 ) -> Dict[str, Any]:
     """
     Update an existing task in Todoist.
-
-    Args:
-        task_id: The ID of the task to update
-        content: New task content
-        description: New task description
-        labels: New list of label names
-        priority: New priority (1-4, where 4 is highest)
-        due_string: New human-readable due date
-        due_date: New specific due date in YYYY-MM-DD format
-        due_datetime: New specific due datetime in RFC3339 format
-        due_lang: Language for due_string
-        assignee_id: New assignee ID
-
-    Returns:
-        Updated task object
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         task = api.update_task(
@@ -301,20 +273,13 @@ def update_task(
 def delete_task(task_id: str) -> Dict[str, Any]:
     """
     Delete a task from Todoist.
-
-    Args:
-        task_id: The ID of the task to delete
-
-    Returns:
-        Success status
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         is_success = api.delete_task(task_id=task_id)
@@ -331,17 +296,13 @@ def delete_task(task_id: str) -> Dict[str, Any]:
 def get_projects() -> Dict[str, Any]:
     """
     Get all projects from Todoist.
-
-    Returns:
-        List of projects
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         projects = api.get_projects()
@@ -376,20 +337,13 @@ def get_projects() -> Dict[str, Any]:
 def reopen_task(task_id: str) -> Dict[str, Any]:
     """
     Reopen a completed task.
-
-    Args:
-        task_id: The ID of the task to reopen
-
-    Returns:
-        Success status
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         is_success = api.reopen_task(task_id=task_id)
@@ -406,20 +360,13 @@ def reopen_task(task_id: str) -> Dict[str, Any]:
 def get_task(task_id: str) -> Dict[str, Any]:
     """
     Get a specific task by ID.
-
-    Args:
-        task_id: The ID of the task to retrieve
-
-    Returns:
-        Task object
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
+
+    # Get client lazily
+    api = _get_api_client()
 
     try:
         task = api.get_task(task_id=task_id)
@@ -454,7 +401,7 @@ def register_tools(mcp):
     """
     is_configured, error_msg = _check_config()
     if not is_configured:
-        print(f"⚠ Todoist tools not registered: {error_msg}", file=sys.stderr)
+        print(f"⚠ Todoist tools not registered: {error_msg}")
         return False
 
     # Register each tool

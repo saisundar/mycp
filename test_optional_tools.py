@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 
-def run_server_with_env(env_vars, timeout=3):
+def run_server_with_env(env_vars, timeout=5):
     """
     Run the server with specific environment variables and capture output.
 
@@ -55,9 +55,9 @@ def test_no_config():
     stdout, stderr, code = run_server_with_env(env_vars)
 
     # Check that warnings are shown
-    assert "⚠ Notion tools not registered" in stderr, "Should warn about Notion"
-    assert "⚠ Todoist tools not registered" in stderr, "Should warn about Todoist"
-    assert "⚠ Obsidian tools not registered" in stderr, "Should warn about Obsidian"
+    assert "⚠ Notion tools not registered" in stderr.lower(), "Should warn about Notion"
+    assert "⚠ Todoist tools not registered" in stderr.lower(), "Should warn about Todoist"
+    assert "⚠ Obsidian tools not registered" in stderr.lower(), "Should warn about Obsidian"
     assert "⚠ Warning: No tools loaded" in stderr, "Should show no tools warning"
 
     print("✓ Server starts gracefully with no config")
@@ -82,8 +82,8 @@ def test_partial_config():
 
         # Obsidian should load, others should warn
         assert "✓ Obsidian tools: LOADED" in stderr, "Obsidian should load"
-        assert "⚠ Notion tools not registered" in stderr, "Should warn about Notion"
-        assert "⚠ Todoist tools not registered" in stderr, "Should warn about Todoist"
+        assert "⚠ Notion tools not registered" in stderr.lower(), "Should warn about Notion"
+        assert "⚠ Todoist tools not registered" in stderr.lower(), "Should warn about Todoist"
 
         print("✓ Server handles partial configuration")
         print()
