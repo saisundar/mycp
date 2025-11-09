@@ -3,7 +3,8 @@ Todoist MCP Tools - Task management operations for Todoist
 """
 
 import os
-from typing import Dict, List, Optional
+import sys
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -12,18 +13,30 @@ from todoist_api_python.api import TodoistAPI
 # Load environment variables
 load_dotenv()
 
-# Initialize Todoist client
+# Initialize Todoist configuration (without raising errors at import time)
 todoist_token = os.getenv("TODOIST_TOKEN")
-if not todoist_token:
-    raise ValueError(
-        "TODOIST_TOKEN environment variable is not set. Get one from https://todoist.com/app/settings/integrations"
-    )
+api = None
+if todoist_token:
+    try:
+        api = TodoistAPI(todoist_token)
+    except Exception:
+        api = None
 
-api = TodoistAPI(todoist_token)
-router = FastMCP("todoist-tools")
+
+def _check_config() -> tuple[bool, str]:
+    """Check if Todoist is properly configured and return status + message."""
+    if not todoist_token:
+        return (
+            False,
+            "TODOIST_TOKEN environment variable is not set. Get one from https://todoist.com/app/settings/integrations",
+        )
+
+    if not api:
+        return False, "Failed to initialize Todoist client. Check your TODOIST_TOKEN."
+
+    return True, ""
 
 
-@router.tool()
 def create_task(
     content: str,
     description: Optional[str] = None,
@@ -60,6 +73,14 @@ def create_task(
     Returns:
         Created task object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         task = api.add_task(
             content=content,
@@ -100,7 +121,6 @@ def create_task(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_tasks(
     project_id: Optional[str] = None,
     section_id: Optional[str] = None,
@@ -123,6 +143,14 @@ def get_tasks(
     Returns:
         List of tasks
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         tasks = api.get_tasks(
             project_id=project_id,
@@ -165,7 +193,6 @@ def get_tasks(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def complete_task(task_id: str) -> Dict[str, Any]:
     """
     Mark a task as completed.
@@ -176,6 +203,14 @@ def complete_task(task_id: str) -> Dict[str, Any]:
     Returns:
         Success status
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         is_success = api.close_task(task_id=task_id)
 
@@ -188,7 +223,6 @@ def complete_task(task_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def update_task(
     task_id: str,
     content: Optional[str] = None,
@@ -219,6 +253,14 @@ def update_task(
     Returns:
         Updated task object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         task = api.update_task(
             task_id=task_id,
@@ -256,7 +298,6 @@ def update_task(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def delete_task(task_id: str) -> Dict[str, Any]:
     """
     Delete a task from Todoist.
@@ -267,6 +308,14 @@ def delete_task(task_id: str) -> Dict[str, Any]:
     Returns:
         Success status
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         is_success = api.delete_task(task_id=task_id)
 
@@ -279,7 +328,6 @@ def delete_task(task_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_projects() -> Dict[str, Any]:
     """
     Get all projects from Todoist.
@@ -287,6 +335,14 @@ def get_projects() -> Dict[str, Any]:
     Returns:
         List of projects
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         projects = api.get_projects()
 
@@ -317,7 +373,6 @@ def get_projects() -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def reopen_task(task_id: str) -> Dict[str, Any]:
     """
     Reopen a completed task.
@@ -328,6 +383,14 @@ def reopen_task(task_id: str) -> Dict[str, Any]:
     Returns:
         Success status
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         is_success = api.reopen_task(task_id=task_id)
 
@@ -340,7 +403,6 @@ def reopen_task(task_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_task(task_id: str) -> Dict[str, Any]:
     """
     Get a specific task by ID.
@@ -351,6 +413,14 @@ def get_task(task_id: str) -> Dict[str, Any]:
     Returns:
         Task object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         task = api.get_task(task_id=task_id)
 
@@ -375,3 +445,26 @@ def get_task(task_id: str) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def register_tools(mcp):
+    """
+    Register all Todoist tools with the main FastMCP server.
+    Only registers tools if Todoist is properly configured.
+    """
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        print(f"⚠ Todoist tools not registered: {error_msg}", file=sys.stderr)
+        return False
+
+    # Register each tool
+    mcp.add_tool(create_task)
+    mcp.add_tool(get_tasks)
+    mcp.add_tool(complete_task)
+    mcp.add_tool(update_task)
+    mcp.add_tool(delete_task)
+    mcp.add_tool(get_projects)
+    mcp.add_tool(reopen_task)
+    mcp.add_tool(get_task)
+
+    return True

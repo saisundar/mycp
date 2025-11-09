@@ -3,36 +3,50 @@ Obsidian MCP Tools - Note management operations for Obsidian vaults
 """
 
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Obsidian configuration
+# Initialize Obsidian configuration (without raising errors at import time)
 OBSIDIAN_VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH")
-if not OBSIDIAN_VAULT_PATH:
-    raise ValueError(
-        "OBSIDIAN_VAULT_PATH environment variable is not set. Set it to your vault path (e.g., /Users/username/Documents/Obsidian/Vault)"
-    )
-
-vault_path = Path(OBSIDIAN_VAULT_PATH)
-if not vault_path.exists():
-    raise ValueError(f"Obsidian vault path does not exist: {OBSIDIAN_VAULT_PATH}")
-
 OBSIDIAN_TEMPLATES_PATH = os.getenv("OBSIDIAN_TEMPLATES_PATH", "templates/")
-router = FastMCP("obsidian-tools")
+
+# Vault path validation will happen at runtime
+vault_path = None
+if OBSIDIAN_VAULT_PATH:
+    vault_path = Path(OBSIDIAN_VAULT_PATH)
+    if not vault_path.exists():
+        # Don't raise error at import time, just mark as invalid
+        vault_path = None
+
+
+def _check_config() -> tuple[bool, str]:
+    """Check if Obsidian is properly configured and return status + message."""
+    if not OBSIDIAN_VAULT_PATH:
+        return False, "OBSIDIAN_VAULT_PATH environment variable is not set"
+
+    path = Path(OBSIDIAN_VAULT_PATH)
+    if not path.exists():
+        return False, f"Obsidian vault path does not exist: {OBSIDIAN_VAULT_PATH}"
+
+    return True, ""
 
 
 def _get_note_path(note_name: str) -> Path:
     """Get the full path for a note, handling .md extension."""
+    if not OBSIDIAN_VAULT_PATH:
+        raise ValueError("OBSIDIAN_VAULT_PATH environment variable is not set")
+
+    vault = Path(OBSIDIAN_VAULT_PATH)
     if not note_name.endswith(".md"):
         note_name += ".md"
-    return vault_path / note_name
+    return vault / note_name
 
 
 def _ensure_directory_exists(file_path: Path) -> None:
@@ -40,7 +54,6 @@ def _ensure_directory_exists(file_path: Path) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
 
-@router.tool()
 def read_note(note_path: str) -> Dict[str, Any]:
     """
     Read the content of an Obsidian note.
@@ -51,6 +64,14 @@ def read_note(note_path: str) -> Dict[str, Any]:
     Returns:
         Note content and metadata
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -69,7 +90,7 @@ def read_note(note_path: str) -> Dict[str, Any]:
         return {
             "success": True,
             "note": {
-                "path": str(full_path.relative_to(vault_path)),
+                "path": str(full_path.relative_to(Path(OBSIDIAN_VAULT_PATH))),
                 "content": content,
                 "size": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
@@ -80,7 +101,6 @@ def read_note(note_path: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def create_note(
     note_path: str,
     content: str,
@@ -99,6 +119,14 @@ def create_note(
     Returns:
         Success status and note metadata
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -132,7 +160,7 @@ def create_note(
         return {
             "success": True,
             "note": {
-                "path": str(full_path.relative_to(vault_path)),
+                "path": str(full_path.relative_to(Path(OBSIDIAN_VAULT_PATH))),
                 "size": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                 "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
@@ -142,7 +170,6 @@ def create_note(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def update_note(note_path: str, content: str) -> Dict[str, Any]:
     """
     Completely replace the content of an existing Obsidian note.
@@ -154,6 +181,14 @@ def update_note(note_path: str, content: str) -> Dict[str, Any]:
     Returns:
         Success status and note metadata
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -172,7 +207,7 @@ def update_note(note_path: str, content: str) -> Dict[str, Any]:
         return {
             "success": True,
             "note": {
-                "path": str(full_path.relative_to(vault_path)),
+                "path": str(full_path.relative_to(Path(OBSIDIAN_VAULT_PATH))),
                 "size": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             },
@@ -181,7 +216,6 @@ def update_note(note_path: str, content: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def append_to_note(
     note_path: str, content: str, add_newline: bool = True
 ) -> Dict[str, Any]:
@@ -196,6 +230,14 @@ def append_to_note(
     Returns:
         Success status and note metadata
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -216,7 +258,7 @@ def append_to_note(
         return {
             "success": True,
             "note": {
-                "path": str(full_path.relative_to(vault_path)),
+                "path": str(full_path.relative_to(Path(OBSIDIAN_VAULT_PATH))),
                 "size": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             },
@@ -225,7 +267,6 @@ def append_to_note(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def list_notes(folder: str = "") -> Dict[str, Any]:
     """
     List all notes in a folder (or entire vault).
@@ -236,8 +277,17 @@ def list_notes(folder: str = "") -> Dict[str, Any]:
     Returns:
         List of notes with metadata
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
-        search_path = vault_path / folder if folder else vault_path
+        vault = Path(OBSIDIAN_VAULT_PATH)
+        search_path = vault / folder if folder else vault
 
         if not search_path.exists():
             return {
@@ -248,7 +298,7 @@ def list_notes(folder: str = "") -> Dict[str, Any]:
         notes = []
         for md_file in search_path.rglob("*.md"):
             try:
-                rel_path = str(md_file.relative_to(vault_path))
+                rel_path = str(md_file.relative_to(vault))
                 stat = md_file.stat()
 
                 notes.append(
@@ -271,7 +321,6 @@ def list_notes(folder: str = "") -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def search_notes(query: str, case_sensitive: bool = False) -> Dict[str, Any]:
     """
     Search for notes containing specific text.
@@ -283,10 +332,19 @@ def search_notes(query: str, case_sensitive: bool = False) -> Dict[str, Any]:
     Returns:
         List of matching notes with context
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
+        vault = Path(OBSIDIAN_VAULT_PATH)
         matching_notes = []
 
-        for md_file in vault_path.rglob("*.md"):
+        for md_file in vault.rglob("*.md"):
             try:
                 with open(md_file, "r", encoding="utf-8") as f:
                     content = f.read()
@@ -309,7 +367,7 @@ def search_notes(query: str, case_sensitive: bool = False) -> Dict[str, Any]:
                                 }
                             )
 
-                    rel_path = str(md_file.relative_to(vault_path))
+                    rel_path = str(md_file.relative_to(vault))
                     stat = md_file.stat()
 
                     matching_notes.append(
@@ -338,7 +396,6 @@ def search_notes(query: str, case_sensitive: bool = False) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def delete_note(note_path: str) -> Dict[str, Any]:
     """
     Delete an Obsidian note (moves to trash if possible, otherwise permanent delete).
@@ -349,6 +406,14 @@ def delete_note(note_path: str) -> Dict[str, Any]:
     Returns:
         Success status
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -378,7 +443,6 @@ def delete_note(note_path: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_note_metadata(note_path: str) -> Dict[str, Any]:
     """
     Get metadata for a note without reading its full content.
@@ -389,6 +453,14 @@ def get_note_metadata(note_path: str) -> Dict[str, Any]:
     Returns:
         Note metadata including word count, line count, etc.
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     try:
         full_path = _get_note_path(note_path)
 
@@ -413,7 +485,7 @@ def get_note_metadata(note_path: str) -> Dict[str, Any]:
         return {
             "success": True,
             "metadata": {
-                "path": str(full_path.relative_to(vault_path)),
+                "path": str(full_path.relative_to(Path(OBSIDIAN_VAULT_PATH))),
                 "size_bytes": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                 "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
@@ -424,3 +496,26 @@ def get_note_metadata(note_path: str) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def register_tools(mcp):
+    """
+    Register all Obsidian tools with the main FastMCP server.
+    Only registers tools if Obsidian is properly configured.
+    """
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        print(f"⚠ Obsidian tools not registered: {error_msg}", file=sys.stderr)
+        return False
+
+    # Register each tool
+    mcp.add_tool(read_note)
+    mcp.add_tool(create_note)
+    mcp.add_tool(update_note)
+    mcp.add_tool(append_to_note)
+    mcp.add_tool(list_notes)
+    mcp.add_tool(search_notes)
+    mcp.add_tool(delete_note)
+    mcp.add_tool(get_note_metadata)
+
+    return True

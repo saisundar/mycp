@@ -4,29 +4,41 @@ Notion MCP Tools - CRUD operations for Notion workspaces
 
 import json
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 from notion_client import Client
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Notion client
+# Initialize Notion configuration (without raising errors at import time)
 notion_token = os.getenv("NOTION_TOKEN")
-if not notion_token:
-    raise ValueError(
-        "NOTION_TOKEN environment variable is not set. Get one from https://www.notion.so/my-integrations"
-    )
-
-notion = Client(auth=notion_token)
-router = FastMCP("notion-tools")
+notion = None
+if notion_token:
+    try:
+        notion = Client(auth=notion_token)
+    except Exception:
+        notion = None
 
 DEFAULT_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 
 
-@router.tool()
+def _check_config() -> tuple[bool, str]:
+    """Check if Notion is properly configured and return status + message."""
+    if not notion_token:
+        return (
+            False,
+            "NOTION_TOKEN environment variable is not set. Get one from https://www.notion.so/my-integrations",
+        )
+
+    if not notion:
+        return False, "Failed to initialize Notion client. Check your NOTION_TOKEN."
+
+    return True, ""
+
+
 def create_database_page(
     title: str,
     database_id: Optional[str] = None,
@@ -43,11 +55,20 @@ def create_database_page(
     Returns:
         The created page object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     db_id = database_id or DEFAULT_DATABASE_ID
     if not db_id:
-        raise ValueError(
-            "No database_id provided and NOTION_DATABASE_ID environment variable is not set"
-        )
+        return {
+            "success": False,
+            "error": "No database_id provided and NOTION_DATABASE_ID environment variable is not set",
+        }
 
     # Prepare the page properties
     page_properties = {"title": {"title": [{"text": {"content": title}}]}}
@@ -58,7 +79,10 @@ def create_database_page(
             try:
                 properties = json.loads(properties)
             except json.JSONDecodeError:
-                raise ValueError("Properties must be valid JSON string or a dictionary")
+                return {
+                    "success": False,
+                    "error": "Properties must be valid JSON string or a dictionary",
+                }
 
         page_properties.update(properties)
 
@@ -76,7 +100,6 @@ def create_database_page(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_database(
     database_id: Optional[str] = None,
     filter_json: Optional[str] = None,
@@ -93,11 +116,20 @@ def get_database(
     Returns:
         List of pages in the database
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     db_id = database_id or DEFAULT_DATABASE_ID
     if not db_id:
-        raise ValueError(
-            "No database_id provided and NOTION_DATABASE_ID environment variable is not set"
-        )
+        return {
+            "success": False,
+            "error": "No database_id provided and NOTION_DATABASE_ID environment variable is not set",
+        }
 
     query_params = {}
 
@@ -105,7 +137,10 @@ def get_database(
         try:
             query_params["filter"] = json.loads(filter_json)
         except json.JSONDecodeError:
-            raise ValueError("filter_json must be a valid JSON string")
+            return {
+                "success": False,
+                "error": "filter_json must be a valid JSON string",
+            }
 
     if sorts:
         query_params["sorts"] = sorts
@@ -133,7 +168,6 @@ def get_database(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def get_page(page_id: str) -> Dict[str, Any]:
     """
     Get a Notion page by ID and its content.
@@ -144,6 +178,14 @@ def get_page(page_id: str) -> Dict[str, Any]:
     Returns:
         The page object with content
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
         page_id = page_id.split("/")[-1].split("?")[0]
@@ -170,7 +212,6 @@ def get_page(page_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
     """
     Update properties of a Notion page.
@@ -182,6 +223,14 @@ def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         The updated page object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
         page_id = page_id.split("/")[-1].split("?")[0]
@@ -191,7 +240,10 @@ def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
         try:
             properties = json.loads(properties)
         except json.JSONDecodeError:
-            raise ValueError("Properties must be valid JSON string or a dictionary")
+            return {
+                "success": False,
+                "error": "Properties must be valid JSON string or a dictionary",
+            }
 
     try:
         response = notion.pages.update(page_id=page_id, properties=properties)
@@ -206,7 +258,6 @@ def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def create_page(
     title: str, parent_page_id: Optional[str] = None, content: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -221,6 +272,14 @@ def create_page(
     Returns:
         The created page object
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     # Prepare the page
     page_data = {"properties": {"title": {"title": [{"text": {"content": title}}]}}}
 
@@ -257,7 +316,6 @@ def create_page(
         return {"success": False, "error": str(e)}
 
 
-@router.tool()
 def archive_page(page_id: str) -> Dict[str, Any]:
     """
     Archive (delete) a Notion page.
@@ -268,6 +326,14 @@ def archive_page(page_id: str) -> Dict[str, Any]:
     Returns:
         Success status
     """
+    # Check configuration first
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        return {
+            "success": False,
+            "error": error_msg,
+        }
+
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
         page_id = page_id.split("/")[-1].split("?")[0]
@@ -282,3 +348,24 @@ def archive_page(page_id: str) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def register_tools(mcp):
+    """
+    Register all Notion tools with the main FastMCP server.
+    Only registers tools if Notion is properly configured.
+    """
+    is_configured, error_msg = _check_config()
+    if not is_configured:
+        print(f"⚠ Notion tools not registered: {error_msg}", file=sys.stderr)
+        return False
+
+    # Register each tool
+    mcp.add_tool(create_database_page)
+    mcp.add_tool(get_database)
+    mcp.add_tool(get_page)
+    mcp.add_tool(update_page)
+    mcp.add_tool(create_page)
+    mcp.add_tool(archive_page)
+
+    return True
