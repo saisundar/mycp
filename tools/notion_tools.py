@@ -1,5 +1,6 @@
 """
 Notion MCP Tools - CRUD operations for Notion workspaces
+Simplified for FastMCP Cloud deployment
 """
 
 import json
@@ -13,15 +14,9 @@ from notion_client import Client
 # Load environment variables
 load_dotenv()
 
-# Initialize Notion configuration (without raising errors at import time)
+# Initialize Notion client (will be None if token not set)
 notion_token = os.getenv("NOTION_TOKEN")
-notion = None
-if notion_token:
-    try:
-        notion = Client(auth=notion_token)
-    except Exception:
-        notion = None
-
+notion = Client(auth=notion_token) if notion_token else None
 DEFAULT_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 
 
@@ -46,22 +41,11 @@ def create_database_page(
 ) -> Dict[str, Any]:
     """
     Create a new page in a Notion database.
-
-    Args:
-        title: The title of the page
-        database_id: The ID of the database (uses NOTION_DATABASE_ID from env if not provided)
-        properties: Additional properties to set on the page (as a JSON string or dict)
-
-    Returns:
-        The created page object
     """
-    # Check configuration first
+    # Check configuration at runtime
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     db_id = database_id or DEFAULT_DATABASE_ID
     if not db_id:
@@ -107,22 +91,10 @@ def get_database(
 ) -> Dict[str, Any]:
     """
     Query a Notion database and return pages.
-
-    Args:
-        database_id: The ID of the database (uses NOTION_DATABASE_ID from env if not provided)
-        filter_json: JSON string for filtering results (Notion API filter format)
-        sorts: List of sort objects, e.g., [{"property": "Name", "direction": "ascending"}]
-
-    Returns:
-        List of pages in the database
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     db_id = database_id or DEFAULT_DATABASE_ID
     if not db_id:
@@ -171,20 +143,10 @@ def get_database(
 def get_page(page_id: str) -> Dict[str, Any]:
     """
     Get a Notion page by ID and its content.
-
-    Args:
-        page_id: The ID of the page (can be full URL or just the ID)
-
-    Returns:
-        The page object with content
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
@@ -215,21 +177,10 @@ def get_page(page_id: str) -> Dict[str, Any]:
 def update_page(page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
     """
     Update properties of a Notion page.
-
-    Args:
-        page_id: The ID of the page to update
-        properties: Properties to update (as JSON string or dict)
-
-    Returns:
-        The updated page object
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
@@ -263,22 +214,10 @@ def create_page(
 ) -> Dict[str, Any]:
     """
     Create a standalone Notion page (not in a database).
-
-    Args:
-        title: The title of the page
-        parent_page_id: Optional parent page ID (if not provided, creates in root)
-        content: Optional markdown-like content to add to the page
-
-    Returns:
-        The created page object
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     # Prepare the page
     page_data = {"properties": {"title": {"title": [{"text": {"content": title}}]}}}
@@ -319,20 +258,10 @@ def create_page(
 def archive_page(page_id: str) -> Dict[str, Any]:
     """
     Archive (delete) a Notion page.
-
-    Args:
-        page_id: The ID of the page to archive
-
-    Returns:
-        Success status
     """
-    # Check configuration first
     is_configured, error_msg = _check_config()
     if not is_configured:
-        return {
-            "success": False,
-            "error": error_msg,
-        }
+        return {"success": False, "error": error_msg}
 
     # Extract page ID from URL if needed
     if "notion.so" in page_id:
