@@ -5,6 +5,7 @@ Each tool module is loaded conditionally - if configuration is missing,
 the tool won't be available but the server will continue to run.
 """
 
+import asyncio
 import sys
 
 from mcp.server.fastmcp import FastMCP
@@ -94,5 +95,61 @@ else:
     )
 print("=" * 60, file=sys.stderr)
 
+
+def run_server():
+    """
+    Run the MCP server with robust event loop handling.
+    Works both in standard environments and in environments with existing event loops.
+    """
+    try:
+        # Try standard run first
+        mcp.run(transport="stdio")
+
+    except RuntimeError as e:
+        # Handle "asyncio already running" error
+        error_msg = str(e).lower()
+        if "asyncio" in error_msg and "already running" in error_msg:
+            print(
+                "Detected existing event loop, switching to async mode...",
+                file=sys.stderr,
+            )
+
+            # Use asyncio.run to create a new loop and run the async method
+            try:
+                asyncio.run(mcp.run_stdio_async())
+            except RuntimeError as e2:
+                # If we still get an error, we're in an incompatible environment
+                print(
+                    f"Fatal error: Cannot start server in this environment: {e2}",
+                    file=sys.stderr,
+                )
+                print(
+                    "The MCP stdio transport requires control of the event loop.",
+                    file=sys.stderr,
+                )
+                print(
+                    "This commonly happens in serverless environments or Jupyter notebooks.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Try running the server in a standard Python process instead.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        else:
+            # Re-raise unexpected RuntimeErrors
+            raise
+
+    except KeyboardInterrupt:
+        print("\nShutting down server...", file=sys.stderr)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Failed to start server: {e}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    mcp.run()
+    run_server()
