@@ -1,4 +1,4 @@
-fastmcp>=0.4.1
+fastmcp>=2.0.0
 python-dotenv>=1.0.0
 notion-client>=2.2.1
 todoist-api-python>=2.1.4
