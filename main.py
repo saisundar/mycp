@@ -7,7 +7,7 @@ Tools are registered automatically when modules are imported.
 Each tool checks its own configuration and registers only if properly configured.
 """
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # Initialize the FastMCP server - this is the entry point for FastMCP Cloud
 mcp = FastMCP("multi-tool-server")
