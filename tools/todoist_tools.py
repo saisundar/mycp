@@ -119,7 +119,6 @@ def create_task(
                 "priority": task.priority,
                 "due": task.due.to_dict() if task.due else None,
                 "url": task.url,
-                "comment_count": task.comment_count,
                 "completed": task.is_completed,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
             },
