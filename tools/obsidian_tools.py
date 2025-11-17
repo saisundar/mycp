@@ -232,12 +232,8 @@ def list_notes(folder: str = "") -> Dict[str, Any]:
                     {
                         "path": rel_path,
                         "size": stat.st_size,
-                        "modified": datetime.fromtimestamp(
-                            stat.st_mtime
-                        ).isoformat(),
-                        "created": datetime.fromtimestamp(
-                            stat.st_ctime
-                        ).isoformat(),
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
                     }
                 )
             except Exception:
@@ -388,13 +384,13 @@ def register_tools(mcp):
         print(f"⚠ Obsidian tools not registered: {error_msg}")
         return False
 
-    mcp.add_tool(read_note)
-    mcp.add_tool(create_note)
-    mcp.add_tool(update_note)
-    mcp.add_tool(append_to_note)
-    mcp.add_tool(list_notes)
-    mcp.add_tool(search_notes)
-    mcp.add_tool(delete_note)
-    mcp.add_tool(get_note_metadata)
+    mcp.tool(read_note)
+    mcp.tool(create_note)
+    mcp.tool(update_note)
+    mcp.tool(append_to_note)
+    mcp.tool(list_notes)
+    mcp.tool(search_notes)
+    mcp.tool(delete_note)
+    mcp.tool(get_note_metadata)
 
     return True

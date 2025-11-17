@@ -4,8 +4,8 @@ Optimized for FastMCP Cloud deployment with completely lazy loading
 """
 
 import json
-import sys
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -340,11 +340,11 @@ def register_tools(mcp):
         return False
 
     # Register each tool
-    mcp.add_tool(create_database_page)
-    mcp.add_tool(get_database)
-    mcp.add_tool(get_page)
-    mcp.add_tool(update_page)
-    mcp.add_tool(create_page)
-    mcp.add_tool(archive_page)
+    mcp.tool(create_database_page)
+    mcp.tool(get_database)
+    mcp.tool(get_page)
+    mcp.tool(update_page)
+    mcp.tool(create_page)
+    mcp.tool(archive_page)
 
     return True

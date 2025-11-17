@@ -405,13 +405,13 @@ def register_tools(mcp):
         return False
 
     # Register each tool
-    mcp.add_tool(create_task)
-    mcp.add_tool(get_tasks)
-    mcp.add_tool(complete_task)
-    mcp.add_tool(update_task)
-    mcp.add_tool(delete_task)
-    mcp.add_tool(get_projects)
-    mcp.add_tool(reopen_task)
-    mcp.add_tool(get_task)
+    mcp.tool(create_task)
+    mcp.tool(get_tasks)
+    mcp.tool(complete_task)
+    mcp.tool(update_task)
+    mcp.tool(delete_task)
+    mcp.tool(get_projects)
+    mcp.tool(reopen_task)
+    mcp.tool(get_task)
 
     return True

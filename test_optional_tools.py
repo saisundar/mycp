@@ -5,227 +5,205 @@ Tests that tools can be loaded optionally and that missing config doesn't crash 
 """
 
 import os
-import subprocess
 import sys
+import unittest
 import tempfile
+import shutil
 from pathlib import Path
+from unittest.mock import patch
+
+# Add the tools directory to the Python path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from tools import notion_tools, obsidian_tools, todoist_tools
 
 
-def run_server_with_env(env_vars, timeout=5):
+class MockFastMCP:
+    """A mock FastMCP class to intercept tool registrations."""
+
+    def __init__(self):
+        self.registered_tools = []
+
+    def add_tool(self, func):
+        """Record the registration of a tool function."""
+        self.registered_tools.append(func.__name__)
+
+    def tool(self, func):
+        """Decorator version of tool registration."""
+        self.add_tool(func)
+        return func
+
+    def clear(self):
+        """Clear the list of registered tools."""
+        self.registered_tools = []
+
+
+class TestOptionalTools(unittest.TestCase):
     """
-    Run the server with specific environment variables and capture output.
-
-    Args:
-        env_vars: Dict of environment variables to set
-        timeout: Seconds to run before terminating
-
-    Returns:
-        Tuple of (stdout, stderr, return_code)
+    Test suite for optional tool loading and runtime error handling.
+    This test suite avoids running a subprocess and instead tests the registration
+    and runtime logic of the tool modules directly.
     """
-    env = os.environ.copy()
-    env.update(env_vars)
 
-    try:
-        result = subprocess.run(
-            [sys.executable, "main.py"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        return result.stdout, result.stderr, result.returncode
-    except subprocess.TimeoutExpired as e:
-        return e.stdout or "", e.stderr or "", 0
-    except Exception as e:
-        return "", str(e), 1
+    def setUp(self):
+        """Set up a clean environment for each test."""
+        self.mock_mcp = MockFastMCP()
+        self.temp_dir = tempfile.mkdtemp()
 
+        # Backup original environment variables
+        self.original_env = os.environ.copy()
 
-def test_no_config():
-    """Test server starts with no configuration - no tools should load."""
-    print("Test 1: No configuration")
-    print("-" * 60)
+        # Clear any potentially conflicting environment variables
+        for key in ["NOTION_TOKEN", "TODOIST_TOKEN", "OBSIDIAN_VAULT_PATH", "NOTION_DATABASE_ID"]:
+            if key in os.environ:
+                del os.environ[key]
+        
+        # Reset lazy loading state in each module
+        self.reset_tool_modules()
 
-    # Ensure no tool env vars are set
-    env_vars = {
-        "NOTION_TOKEN": "",
-        "TODOIST_TOKEN": "",
-        "OBSIDIAN_VAULT_PATH": "",
-    }
+    def tearDown(self):
+        """Restore the environment and clean up temporary files."""
+        shutil.rmtree(self.temp_dir)
+        os.environ.clear()
+        os.environ.update(self.original_env)
 
-    stdout, stderr, code = run_server_with_env(env_vars)
+    def reset_tool_modules(self):
+        """
+        Resets the internal state of tool modules to ensure test isolation.
+        This is crucial because they use global variables for lazy loading.
+        """
+        # Notion
+        notion_tools._env_loaded = False
+        notion_tools._notion_token = None
+        notion_tools._notion_client = None
+        notion_tools._DEFAULT_DATABASE_ID = None
 
-    # Check that warnings are shown
-    assert "⚠ Notion tools not registered" in stderr.lower(), "Should warn about Notion"
-    assert "⚠ Todoist tools not registered" in stderr.lower(), "Should warn about Todoist"
-    assert "⚠ Obsidian tools not registered" in stderr.lower(), "Should warn about Obsidian"
-    assert "⚠ Warning: No tools loaded" in stderr, "Should show no tools warning"
+        # Todoist
+        todoist_tools._env_loaded = False
+        todoist_tools._todoist_token = None
+        todoist_tools._api_client = None
 
-    print("✓ Server starts gracefully with no config")
-    print("✓ All tools show appropriate warnings")
-    print()
+        # Obsidian
+        obsidian_tools._env_loaded = False
+        obsidian_tools._OBSIDIAN_VAULT_PATH = None
+        obsidian_tools._vault_path = None
 
+    def test_no_config_no_tools_registered(self):
+        """
+        Verify that no tools are registered when no config is provided.
+        """
+        with patch('sys.stderr'): # Suppress stderr warnings
+            notion_registered = notion_tools.register_tools(self.mock_mcp)
+            todoist_registered = todoist_tools.register_tools(self.mock_mcp)
+            obsidian_registered = obsidian_tools.register_tools(self.mock_mcp)
 
-def test_partial_config():
-    """Test server with only one tool configured."""
-    print("Test 2: Partial configuration (Obsidian only)")
-    print("-" * 60)
+        self.assertFalse(notion_registered, "Notion should not be registered")
+        self.assertFalse(todoist_registered, "Todoist should not be registered")
+        self.assertFalse(obsidian_registered, "Obsidian should not be registered")
+        self.assertEqual(len(self.mock_mcp.registered_tools), 0, "No tools should be in the MCP list")
 
-    # Create a temporary directory for Obsidian vault to test path validation
-    with tempfile.TemporaryDirectory() as temp_dir:
-        env_vars = {
-            "NOTION_TOKEN": "",  # Not set
-            "TODOIST_TOKEN": "",  # Not set
-            "OBSIDIAN_VAULT_PATH": temp_dir,  # Valid path
-        }
+    def test_partial_config_obsidian_only(self):
+        """
+        Verify that only Obsidian tools are registered when its config is present.
+        """
+        os.environ["OBSIDIAN_VAULT_PATH"] = self.temp_dir
+        self.reset_tool_modules()
 
-        stdout, stderr, code = run_server_with_env(env_vars)
+        with patch('sys.stderr'): # Suppress stderr warnings
+            notion_registered = notion_tools.register_tools(self.mock_mcp)
+            obsidian_registered = obsidian_tools.register_tools(self.mock_mcp)
+            todoist_registered = todoist_tools.register_tools(self.mock_mcp)
 
-        # Obsidian should load, others should warn
-        assert "✓ Obsidian tools: LOADED" in stderr, "Obsidian should load"
-        assert "⚠ Notion tools not registered" in stderr.lower(), "Should warn about Notion"
-        assert "⚠ Todoist tools not registered" in stderr.lower(), "Should warn about Todoist"
+        self.assertFalse(notion_registered, "Notion should not be registered")
+        self.assertTrue(obsidian_registered, "Obsidian should be registered")
+        self.assertFalse(todoist_registered, "Todoist should not be registered")
+        
+        self.assertIn("read_note", self.mock_mcp.registered_tools)
+        self.assertNotIn("create_database_page", self.mock_mcp.registered_tools)
+        self.assertNotIn("create_task", self.mock_mcp.registered_tools)
 
-        print("✓ Server handles partial configuration")
-        print()
+    def test_all_tools_configured(self):
+        """
+        Verify that all tools are registered when all configs are present.
+        """
+        os.environ["NOTION_TOKEN"] = "fake_notion_token"
+        os.environ["TODOIST_TOKEN"] = "fake_todoist_token"
+        os.environ["OBSIDIAN_VAULT_PATH"] = self.temp_dir
+        self.reset_tool_modules()
 
+        # Mock the client initializations to avoid actual API calls
+        with patch('notion_client.Client'), patch('todoist_api_python.api.TodoistAPI'):
+            notion_registered = notion_tools.register_tools(self.mock_mcp)
+            todoist_registered = todoist_tools.register_tools(self.mock_mcp)
+            obsidian_registered = obsidian_tools.register_tools(self.mock_mcp)
 
-def test_tool_error_messages():
-    """Test that tools return proper error messages when called without config."""
-    print("Test 3: Tool error messages")
-    print("-" * 60)
+        self.assertTrue(notion_registered, "Notion should be registered")
+        self.assertTrue(todoist_registered, "Todoist should be registered")
+        self.assertTrue(obsidian_registered, "Obsidian should be registered")
 
-    # This test would require actually calling the tools via MCP protocol
-    # For now, we'll verify the error handling logic is in place
-    # by checking that the config check functions exist
+        self.assertIn("create_database_page", self.mock_mcp.registered_tools)
+        self.assertIn("create_task", self.mock_mcp.registered_tools)
+        self.assertIn("create_note", self.mock_mcp.registered_tools)
 
-    from tools import notion_tools, todoist_tools, obsidian_tools
+    def test_runtime_errors_if_not_configured(self):
+        """
+        Verify that calling a tool function directly without configuration
+        returns a clear error message.
+        """
+        # Test Notion
+        result = notion_tools.create_database_page(title="Test")
+        self.assertFalse(result["success"])
+        self.assertIn("NOTION_TOKEN", result["error"])
 
-    # Test Notion config check
-    is_configured, error = notion_tools._check_config()
-    assert not is_configured, "Notion should not be configured"
-    assert "NOTION_TOKEN" in error, "Error should mention NOTION_TOKEN"
+        # Test Todoist
+        result = todoist_tools.create_task(content="Test")
+        self.assertFalse(result["success"])
+        self.assertIn("TODOIST_TOKEN", result["error"])
 
-    # Test Todoist config check
-    is_configured, error = todoist_tools._check_config()
-    assert not is_configured, "Todoist should not be configured"
-    assert "TODOIST_TOKEN" in error, "Error should mention TODOIST_TOKEN"
+        # Test Obsidian
+        result = obsidian_tools.read_note(note_path="test.md")
+        self.assertFalse(result["success"])
+        self.assertIn("OBSIDIAN_VAULT_PATH", result["error"])
 
-    # Test Obsidian config check
-    is_configured, error = obsidian_tools._check_config()
-    assert not is_configured, "Obsidian should not be configured"
-    assert "OBSIDIAN_VAULT_PATH" in error, "Error should mention OBSIDIAN_VAULT_PATH"
+    def test_obsidian_requires_existing_path(self):
+        """
+        Verify that Obsidian tools do not register if the vault path does not exist.
+        """
+        os.environ["OBSIDIAN_VAULT_PATH"] = os.path.join(self.temp_dir, "non_existent_vault")
+        self.reset_tool_modules()
 
-    print("✓ All tools have proper config validation")
-    print()
+        with patch('sys.stderr'): # Suppress stderr warnings
+            obsidian_registered = obsidian_tools.register_tools(self.mock_mcp)
 
-
-def test_with_valid_obsidian():
-    """Test with a valid Obsidian vault path."""
-    print("Test 4: Valid Obsidian configuration")
-    print("-" * 60)
-
-    with tempfile.TemporaryDirectory() as temp_vault:
-        env_vars = {
-            "NOTION_TOKEN": "",
-            "TODOIST_TOKEN": "",
-            "OBSIDIAN_VAULT_PATH": temp_vault,
-        }
-
-        stdout, stderr, code = run_server_with_env(env_vars)
-
-        # Obsidian should load successfully
-        assert "✓ Obsidian tools: LOADED" in stderr, "Obsidian should load"
-        assert "⚠ Notion tools not registered" in stderr, "Notion should warn"
-        assert "⚠ Todoist tools not registered" in stderr, "Todoist should warn"
-
-        print("✓ Obsidian loads with valid vault path")
-        print()
-
-
-def test_all_tools_configured():
-    """Test with all tools configured."""
-    print("Test 5: All tools configured")
-    print("-" * 60)
-
-    with tempfile.TemporaryDirectory() as temp_vault:
-        env_vars = {
-            "NOTION_TOKEN": "fake_notion_token",
-            "TODOIST_TOKEN": "fake_todoist_token",
-            "OBSIDIAN_VAULT_PATH": temp_vault,
-            "NOTION_DATABASE_ID": "fake_db_id",
-        }
-
-        stdout, stderr, code = run_server_with_env(env_vars)
-
-        # All tools should attempt to load
-        assert "Notion tools" in stderr, "Should mention Notion"
-        assert "Todoist tools" in stderr, "Should mention Todoist"
-        assert "✓ Obsidian tools: LOADED" in stderr, "Obsidian should load"
-
-        print("✓ All tools attempt to load when configured")
-        print()
-
-
-def test_runtime_tool_calls():
-    """Test that tools return proper errors when called without config."""
-    print("Test 6: Runtime tool call error handling")
-    print("-" * 60)
-
-    # Import tools
-    from tools import notion_tools, todoist_tools, obsidian_tools
-
-    # Test Notion tool without config
-    result = notion_tools.create_database_page(title="Test Page", database_id="test_db")
-    assert not result["success"], "Should fail without config"
-    assert "NOTION_TOKEN" in result["error"], "Error should mention token"
-
-    # Test Todoist tool without config
-    result = todoist_tools.create_task(content="Test task")
-    assert not result["success"], "Should fail without config"
-    assert "TODOIST_TOKEN" in result["error"], "Error should mention token"
-
-    # Test Obsidian tool without config
-    result = obsidian_tools.read_note(note_path="test.md")
-    assert not result["success"], "Should fail without config"
-    assert "OBSIDIAN_VAULT_PATH" in result["error"], "Error should mention vault path"
-
-    print("✓ Tools return proper errors at runtime")
-    print()
+        self.assertFalse(obsidian_registered, "Obsidian should not register with a non-existent path")
+        self.assertEqual(len(self.mock_mcp.registered_tools), 0)
 
 
 def main():
     """Run all tests."""
     print("=" * 60)
-    print("Testing Optional Tool Loading")
+    print("Testing Optional Tool Loading (Resilient Mode)")
     print("=" * 60)
-    print()
-
-    # Change to the correct directory
-    os.chdir(Path(__file__).parent)
-
-    try:
-        test_no_config()
-        test_partial_config()
-        test_tool_error_messages()
-        test_with_valid_obsidian()
-        test_all_tools_configured()
-        test_runtime_tool_calls()
-
-        print("=" * 60)
-        print("✓ All tests passed!")
-        print("=" * 60)
+    
+    # Create a TestLoader instance
+    loader = unittest.TestLoader()
+    
+    # Load tests from the TestCase
+    suite = loader.loadTestsFromTestCase(TestOptionalTools)
+    
+    # Create a TextTestRunner instance
+    runner = unittest.TextTestRunner()
+    
+    # Run the test suite
+    result = runner.run(suite)
+    
+    # Return exit code 0 if successful, 1 otherwise
+    if result.wasSuccessful():
+        print("\n✓ All tests passed!")
         return 0
-
-    except AssertionError as e:
-        print(f"✗ Test failed: {e}", file=sys.stderr)
+    else:
+        print("\n✗ Some tests failed.")
         return 1
-    except Exception as e:
-        print(f"✗ Unexpected error: {e}", file=sys.stderr)
-        import traceback
-
-        traceback.print_exc()
-        return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
