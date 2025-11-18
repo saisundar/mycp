@@ -4,6 +4,7 @@ Optimized for FastMCP Cloud deployment with completely lazy loading
 """
 
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -72,7 +73,6 @@ def create_task(
     labels: Optional[List[str]] = None,
     priority: Optional[int] = None,
     due_string: Optional[str] = None,
-    due_date: Optional[str] = None,
     due_datetime: Optional[str] = None,
     due_lang: Optional[str] = None,
     assignee_id: Optional[str] = None,
@@ -87,6 +87,9 @@ def create_task(
 
     # Get client lazily
     api = _get_api_client()
+    dt = None
+    if due_datetime:
+        dt = datetime.strptime(due_datetime, "%Y-%m-%d %H:%M:%S")
 
     try:
         task = api.add_task(
@@ -99,8 +102,8 @@ def create_task(
             labels=labels,
             priority=priority,
             due_string=due_string,
-            due_date=due_date,
-            due_datetime=due_datetime,
+            due_date=dt.date() if dt else None,
+            due_datetime=dt if due_datetime else None,
             due_lang=due_lang,
             assignee_id=assignee_id,
         )
@@ -150,33 +153,31 @@ def get_tasks(
             project_id=project_id,
             section_id=section_id,
             label=label,
-            filter=filter_query,
-            lang=lang,
             ids=ids,
         )
 
         task_list = []
-        for task in tasks:
-            task_list.append(
-                {
-                    "id": task.id,
-                    "content": task.content,
-                    "description": task.description,
-                    "project_id": task.project_id,
-                    "section_id": task.section_id,
-                    "parent_id": task.parent_id,
-                    "order": task.order,
-                    "labels": task.labels,
-                    "priority": task.priority,
-                    "due": task.due.to_dict() if task.due else None,
-                    "url": task.url,
-                    "comment_count": task.comment_count,
-                    "completed": task.is_completed,
-                    "created_at": task.created_at.isoformat()
-                    if task.created_at
-                    else None,
-                }
-            )
+        for task_iterator in tasks:
+            for task in task_iterator:
+                task_list.append(
+                    {
+                        "id": task.id,
+                        "content": task.content,
+                        "description": task.description,
+                        "project_id": task.project_id,
+                        "section_id": task.section_id,
+                        "parent_id": task.parent_id,
+                        "order": task.order,
+                        "labels": task.labels,
+                        "priority": task.priority,
+                        "due": task.due.to_dict() if task.due else None,
+                        "url": task.url,
+                        "completed": task.is_completed,
+                        "created_at": task.created_at.isoformat()
+                        if task.created_at
+                        else None,
+                    }
+                )
 
         return {
             "success": True,
@@ -199,7 +200,7 @@ def complete_task(task_id: str) -> Dict[str, Any]:
     api = _get_api_client()
 
     try:
-        is_success = api.close_task(task_id=task_id)
+        is_success = api.complete_task(task_id=task_id)
 
         return {
             "success": is_success,
@@ -217,7 +218,6 @@ def update_task(
     labels: Optional[List[str]] = None,
     priority: Optional[int] = None,
     due_string: Optional[str] = None,
-    due_date: Optional[str] = None,
     due_datetime: Optional[str] = None,
     due_lang: Optional[str] = None,
     assignee_id: Optional[str] = None,
@@ -231,7 +231,9 @@ def update_task(
 
     # Get client lazily
     api = _get_api_client()
-
+    dt = None
+    if due_datetime:
+        dt = datetime.strptime(due_datetime, "%Y-%m-%d %H:%M:%S")
     try:
         task = api.update_task(
             task_id=task_id,
@@ -240,8 +242,8 @@ def update_task(
             labels=labels,
             priority=priority,
             due_string=due_string,
-            due_date=due_date,
-            due_datetime=due_datetime,
+            due_date=dt.date() if dt else None,
+            due_datetime=dt if due_datetime else None,
             due_lang=due_lang,
             assignee_id=assignee_id,
         )
@@ -260,7 +262,6 @@ def update_task(
                 "priority": task.priority,
                 "due": task.due.to_dict() if task.due else None,
                 "url": task.url,
-                "comment_count": task.comment_count,
                 "completed": task.is_completed,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
             },
@@ -307,22 +308,21 @@ def get_projects() -> Dict[str, Any]:
         projects = api.get_projects()
 
         project_list = []
-        for project in projects:
-            project_list.append(
-                {
-                    "id": project.id,
-                    "name": project.name,
-                    "color": project.color,
-                    "parent_id": project.parent_id,
-                    "order": project.order,
-                    "comment_count": project.comment_count,
-                    "is_shared": project.is_shared,
-                    "is_favorite": project.is_favorite,
-                    "url": project.url,
-                    "is_inbox_project": project.is_inbox_project,
-                    "is_team_inbox": project.is_team_inbox,
-                }
-            )
+        for project_list_iteration in projects:
+            for project in project_list_iteration:
+                project_list.append(
+                    {
+                        "id": project.id,
+                        "name": project.name,
+                        "color": project.color,
+                        "parent_id": project.parent_id,
+                        "order": project.order,
+                        "is_shared": project.is_shared,
+                        "is_favorite": project.is_favorite,
+                        "url": project.url,
+                        "is_inbox_project": project.is_inbox_project,
+                    }
+                )
 
         return {
             "success": True,
@@ -345,7 +345,7 @@ def reopen_task(task_id: str) -> Dict[str, Any]:
     api = _get_api_client()
 
     try:
-        is_success = api.reopen_task(task_id=task_id)
+        is_success = api.uncomplete_task(task_id=task_id)
 
         return {
             "success": is_success,
@@ -384,7 +384,6 @@ def get_task(task_id: str) -> Dict[str, Any]:
                 "priority": task.priority,
                 "due": task.due.to_dict() if task.due else None,
                 "url": task.url,
-                "comment_count": task.comment_count,
                 "completed": task.is_completed,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
             },
